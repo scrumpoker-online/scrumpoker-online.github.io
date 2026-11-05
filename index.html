@@ -1,9 +1,11 @@
 
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <title>ScrumPoker Online</title>
 
 <style>
@@ -60,7 +62,7 @@ h1 {
   transition: 0.15s;
 }
 
-.opcao:hover {
+.opcao:hover:not(:disabled) {
   background: #374151;
 }
 
@@ -79,6 +81,56 @@ h1 {
   color: #9ca3af;
   font-size: 14px;
 }
+
+/* Participantes */
+
+.participantes {
+  margin-top: 20px;
+  padding: 15px;
+  background: #1f2937;
+  border-radius: 12px;
+  text-align: left;
+}
+
+.participantes h2 {
+  font-size: 18px;
+  text-align: center;
+  margin-top: 0;
+  margin-bottom: 15px;
+}
+
+.participante {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 5px;
+  border-bottom: 1px solid #374151;
+  gap: 12px;
+}
+
+.participante:last-child {
+  border-bottom: none;
+}
+
+.participante-nome {
+  overflow-wrap: anywhere;
+}
+
+.participante-voto {
+  font-size: 18px;
+  font-weight: bold;
+  min-width: 30px;
+  text-align: center;
+  color: #60a5fa;
+}
+
+.sem-participantes {
+  color: #9ca3af;
+  text-align: center;
+  padding: 10px;
+}
+
+/* Botões */
 
 .botoes {
   display: flex;
@@ -105,6 +157,8 @@ button.acao {
   background: #dc2626;
   color: white;
 }
+
+/* Resultados */
 
 .resultados {
   margin-top: 30px;
@@ -150,6 +204,7 @@ button.acao {
   id="nome"
   maxlength="30"
   placeholder="Seu nome"
+  autocomplete="nickname"
 />
 
 <div class="opcoes" id="opcoes"></div>
@@ -157,6 +212,20 @@ button.acao {
 <div class="status" id="status">
   Conectando...
 </div>
+
+<!-- Participantes online -->
+
+<div class="participantes">
+
+  <h2>Participantes online</h2>
+
+  <div id="listaParticipantes">
+    Aguardando conexão...
+  </div>
+
+</div>
+
+<!-- Ações -->
 
 <div class="botoes">
 
@@ -169,6 +238,8 @@ button.acao {
   </button>
 
 </div>
+
+<!-- Resultados -->
 
 <div class="resultados" id="resultados">
 
@@ -186,10 +257,16 @@ button.acao {
 
 </div>
 
+
 <script type="module">
 
-import { initializeApp }
-  from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+/* =========================================
+   FIREBASE IMPORTS
+========================================= */
+
+import {
+  initializeApp
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 
 import {
   getDatabase,
@@ -198,7 +275,6 @@ import {
   get,
   update,
   onValue,
-  runTransaction,
   onDisconnect
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
@@ -210,18 +286,24 @@ import {
 
 /* =========================================
    CONFIGURAÇÃO DO FIREBASE
+
    Substitua pelos dados do seu projeto.
 ========================================= */
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyD1_AgFOI5m73yhP6NbEUizl5QkmOUsOWE",
-    authDomain: "scrumpoker-45c00.firebaseapp.com",
-    projectId: "scrumpoker-45c00",
-    storageBucket: "scrumpoker-45c00.firebasestorage.app",
-    messagingSenderId: "185981243865",
-    appId: "1:185981243865:web:7eaef045b0533a6c1b49c8",
-    measurementId: "G-JZESNN0VYV"
-  };
+const firebaseConfig = {
+
+  apiKey: "SUA_API_KEY",
+
+  authDomain: "SEU_PROJETO.firebaseapp.com",
+
+  databaseURL:
+    "https://SEU_PROJETO-default-rtdb.firebaseio.com",
+
+  projectId: "SEU_PROJETO",
+
+  appId: "SEU_APP_ID"
+
+};
 
 
 /* =========================================
@@ -234,34 +316,54 @@ const db = getDatabase(app);
 
 const auth = getAuth(app);
 
-const salaRef = ref(db, "votacaoFibonacci");
 
-const votosRef = ref(db, "votacaoFibonacci/votos");
+/* =========================================
+   REFERÊNCIAS DO BANCO
+========================================= */
 
-const presencaRef = ref(db, "votacaoFibonacci/presenca");
+const salaRef =
+  ref(db, "votacaoFibonacci");
 
-const estadoRef = ref(db, "votacaoFibonacci/revelado");
+const votosRef =
+  ref(db, "votacaoFibonacci/votos");
+
+const presencaRef =
+  ref(db, "votacaoFibonacci/presenca");
+
+const estadoRef =
+  ref(db, "votacaoFibonacci/revelado");
 
 
 /* =========================================
-   ELEMENTOS
+   ELEMENTOS HTML
 ========================================= */
 
-const campoNome = document.getElementById("nome");
+const campoNome =
+  document.getElementById("nome");
 
-const opcoesDiv = document.getElementById("opcoes");
+const opcoesDiv =
+  document.getElementById("opcoes");
 
-const statusDiv = document.getElementById("status");
+const statusDiv =
+  document.getElementById("status");
 
-const resultadosDiv = document.getElementById("resultados");
+const listaParticipantes =
+  document.getElementById("listaParticipantes");
 
-const mediaDiv = document.getElementById("media");
+const resultadosDiv =
+  document.getElementById("resultados");
 
-const detalhesDiv = document.getElementById("detalhes");
+const mediaDiv =
+  document.getElementById("media");
 
-const botaoMostrar = document.getElementById("mostrar");
+const detalhesDiv =
+  document.getElementById("detalhes");
 
-const botaoLimpar = document.getElementById("limpar");
+const botaoMostrar =
+  document.getElementById("mostrar");
+
+const botaoLimpar =
+  document.getElementById("limpar");
 
 
 /* =========================================
@@ -274,62 +376,7 @@ const fibonacci = [
 
 
 /* =========================================
-   NOME ALEATÓRIO
-========================================= */
-
-function gerarNome() {
-
-  const adjetivos = [
-    "Azul", "Verde", "Vermelho", "Dourado",
-    "Sereno", "Brilhante", "Cósmico", "Solar",
-    " Lunar", "Radiante", "Infinito", "Curioso",
-    "Místico", "Veloz", "Tranquilo"
-  ];
-
-  const substantivos = [
-    "Gato", "Lobo", "Águia", "Cometa",
-    "Planeta", "Estrela", "Fênix", "Dragão",
-    "Panda", "Tigre", "Golfinho", "Oráculo",
-    "Viajante", "Explorador", "Guardião"
-  ];
-
-  const a =
-    adjetivos[Math.floor(Math.random() * adjetivos.length)];
-
-  const b =
-    substantivos[Math.floor(Math.random() * substantivos.length)];
-
-  const n =
-    Math.floor(Math.random() * 900) + 100;
-
-  return `${a} ${b} ${n}`;
-}
-
-
-/* =========================================
-   NOME SALVO NO NAVEGADOR
-========================================= */
-
-const nomeSalvo = localStorage.getItem("nomeFibonacci");
-
-campoNome.value = nomeSalvo || gerarNome();
-
-campoNome.addEventListener("change", () => {
-
-  let nome = campoNome.value.trim();
-
-  if (!nome) {
-    nome = gerarNome();
-    campoNome.value = nome;
-  }
-
-  localStorage.setItem("nomeFibonacci", nome);
-
-});
-
-
-/* =========================================
-   VARIÁVEIS DE SESSÃO
+   VARIÁVEIS
 ========================================= */
 
 let uid = null;
@@ -340,7 +387,80 @@ let revelado = false;
 
 let votos = {};
 
+let participantes = {};
+
 let conectado = false;
+
+
+/* =========================================
+   NOME ALEATÓRIO
+========================================= */
+
+function gerarNome() {
+
+  const adjetivos = [
+    "Azul",
+    "Verde",
+    "Vermelho",
+    "Dourado",
+    "Sereno",
+    "Brilhante",
+    "Cósmico",
+    "Solar",
+    "Lunar",
+    "Radiante",
+    "Infinito",
+    "Curioso",
+    "Místico",
+    "Veloz",
+    "Tranquilo"
+  ];
+
+  const substantivos = [
+    "Gato",
+    "Lobo",
+    "Águia",
+    "Cometa",
+    "Planeta",
+    "Estrela",
+    "Fênix",
+    "Dragão",
+    "Panda",
+    "Tigre",
+    "Golfinho",
+    "Oráculo",
+    "Viajante",
+    "Explorador",
+    "Guardião"
+  ];
+
+  const a =
+    adjetivos[
+      Math.floor(Math.random() * adjetivos.length)
+    ];
+
+  const b =
+    substantivos[
+      Math.floor(Math.random() * substantivos.length)
+    ];
+
+  const n =
+    Math.floor(Math.random() * 900) + 100;
+
+  return `${a} ${b} ${n}`;
+
+}
+
+
+/* =========================================
+   NOME SALVO NO NAVEGADOR
+========================================= */
+
+const nomeSalvo =
+  localStorage.getItem("nomeFibonacci");
+
+campoNome.value =
+  nomeSalvo || gerarNome();
 
 
 /* =========================================
@@ -371,7 +491,7 @@ fibonacci.forEach(numero => {
 
 
 /* =========================================
-   ATUALIZAR INTERFACE DOS BOTÕES
+   ATUALIZAR BOTÕES
 ========================================= */
 
 function atualizarOpcoes() {
@@ -385,7 +505,8 @@ function atualizarOpcoes() {
       String(votoAtual) === valor
     );
 
-    botao.disabled = !conectado || revelado;
+    botao.disabled =
+      !conectado || revelado;
 
   });
 
@@ -404,20 +525,42 @@ async function registrarVoto(numero) {
 
   atualizarOpcoes();
 
-  const nome = campoNome.value.trim() || "Anônimo";
+  const nome =
+    campoNome.value.trim() || "Anônimo";
 
   try {
 
-    await set(ref(db, `votacaoFibonacci/votos/${uid}`), {
-      nome: nome,
-      voto: numero
-    });
+    /*
+      Salva o voto individual.
+    */
+
+    await set(
+      ref(db, `votacaoFibonacci/votos/${uid}`),
+      {
+        nome: nome,
+        voto: numero
+      }
+    );
+
+    /*
+      Atualiza o indicador público de voto.
+      O valor do voto permanece secreto.
+    */
+
+    await update(
+      ref(db, `votacaoFibonacci/presenca/${uid}`),
+      {
+        nome: nome,
+        votou: true
+      }
+    );
 
   } catch (erro) {
 
     console.error("Erro ao votar:", erro);
 
-    statusDiv.textContent = "Erro ao registrar o voto.";
+    statusDiv.textContent =
+      "Erro ao registrar o voto.";
 
   }
 
@@ -430,13 +573,15 @@ async function registrarVoto(numero) {
 
 try {
 
-  const credencial = await signInAnonymously(auth);
+  const credencial =
+    await signInAnonymously(auth);
 
   uid = credencial.user.uid;
 
   conectado = true;
 
-  statusDiv.textContent = "Conectado. Escolha seu número.";
+  statusDiv.textContent =
+    "Conectado. Escolha seu número.";
 
   iniciarPresenca();
 
@@ -444,9 +589,14 @@ try {
 
   observarEstado();
 
+  observarParticipantes();
+
 } catch (erro) {
 
-  console.error("Erro na autenticação:", erro);
+  console.error(
+    "Erro na autenticação:",
+    erro
+  );
 
   statusDiv.textContent =
     "Falha de conexão. Atualize a página.";
@@ -455,7 +605,7 @@ try {
 
 
 /* =========================================
-   PRESENÇA DOS PARTICIPANTES
+   PRESENÇA ONLINE
 ========================================= */
 
 async function iniciarPresenca() {
@@ -465,39 +615,88 @@ async function iniciarPresenca() {
   const minhaPresencaRef =
     ref(db, `votacaoFibonacci/presenca/${uid}`);
 
+  /*
+    O Firebase remove a presença automaticamente
+    quando a conexão for encerrada.
+  */
+
   await onDisconnect(minhaPresencaRef).remove();
+
+  /*
+    Recupera o estado do voto, caso a pessoa
+    recarregue a página.
+  */
+
+  const meuVotoRef =
+    ref(db, `votacaoFibonacci/votos/${uid}`);
+
+  const snapshot =
+    await get(meuVotoRef);
+
+  const votou =
+    snapshot.exists();
 
   await set(minhaPresencaRef, {
 
     nome: campoNome.value,
 
+    votou: votou,
+
     online: true
 
   });
 
-  campoNome.addEventListener("change", async () => {
+  /*
+    Alteração do nome em tempo real.
+  */
+
+  campoNome.addEventListener("input", async () => {
+
+    const nome =
+      campoNome.value.trim() || "Anônimo";
+
+    localStorage.setItem(
+      "nomeFibonacci",
+      nome
+    );
 
     if (!uid) return;
 
-    await update(minhaPresencaRef, {
+    try {
 
-      nome: campoNome.value
+      await update(minhaPresencaRef, {
 
-    });
-
-    // Atualiza também o nome associado ao voto.
-    const meuVotoRef =
-      ref(db, `votacaoFibonacci/votos/${uid}`);
-
-    const snapshot = await get(meuVotoRef);
-
-    if (snapshot.exists()) {
-
-      await update(meuVotoRef, {
-
-        nome: campoNome.value
+        nome: nome
 
       });
+
+      /*
+        Atualiza também o nome do voto,
+        sem alterar o número escolhido.
+      */
+
+      const votoRef =
+        ref(db, `votacaoFibonacci/votos/${uid}`);
+
+      const votoSnapshot =
+        await get(votoRef);
+
+      if (votoSnapshot.exists()) {
+
+        await update(votoRef, {
+
+          nome: nome
+
+        });
+
+      }
+
+    } catch (erro) {
+
+      console.error(
+        "Erro ao atualizar nome:",
+        erro
+      );
 
     }
 
@@ -530,6 +729,8 @@ function observarVotos() {
 
     atualizarStatus();
 
+    atualizarListaParticipantes();
+
     if (revelado) {
 
       calcularResultados();
@@ -549,11 +750,14 @@ function observarEstado() {
 
   onValue(estadoRef, snapshot => {
 
-    revelado = snapshot.val() === true;
+    revelado =
+      snapshot.val() === true;
 
     atualizarOpcoes();
 
     atualizarStatus();
+
+    atualizarListaParticipantes();
 
     if (revelado) {
 
@@ -561,7 +765,8 @@ function observarEstado() {
 
     } else {
 
-      resultadosDiv.style.display = "none";
+      resultadosDiv.style.display =
+        "none";
 
     }
 
@@ -571,22 +776,137 @@ function observarEstado() {
 
 
 /* =========================================
-   STATUS
+   MONITORAR PARTICIPANTES ONLINE
+========================================= */
+
+function observarParticipantes() {
+
+  onValue(presencaRef, snapshot => {
+
+    participantes =
+      snapshot.val() || {};
+
+    atualizarListaParticipantes();
+
+    atualizarStatus();
+
+  });
+
+}
+
+
+/* =========================================
+   ATUALIZAR LISTA DE PARTICIPANTES
+========================================= */
+
+function atualizarListaParticipantes() {
+
+  listaParticipantes.innerHTML = "";
+
+  const lista = Object.entries(participantes)
+    .map(([id, dados]) => {
+
+      let exibicaoVoto = "-";
+
+      if (revelado) {
+
+        const voto =
+          votos[id]?.voto;
+
+        exibicaoVoto =
+          voto !== undefined ? voto : "-";
+
+      } else {
+
+        exibicaoVoto =
+          dados.votou === true ? "*" : "-";
+
+      }
+
+      return {
+
+        id: id,
+
+        nome: dados.nome || "Anônimo",
+
+        voto: exibicaoVoto
+
+      };
+
+    })
+    .sort((a, b) =>
+      a.nome.localeCompare(b.nome, "pt-BR")
+    );
+
+  if (lista.length === 0) {
+
+    listaParticipantes.innerHTML =
+      '<div class="sem-participantes">Nenhum participante online</div>';
+
+    return;
+
+  }
+
+  lista.forEach(participante => {
+
+    const linha =
+      document.createElement("div");
+
+    linha.className =
+      "participante";
+
+    const nome =
+      document.createElement("span");
+
+    nome.className =
+      "participante-nome";
+
+    nome.textContent =
+      participante.nome;
+
+    const voto =
+      document.createElement("span");
+
+    voto.className =
+      "participante-voto";
+
+    voto.textContent =
+      participante.voto;
+
+    linha.appendChild(nome);
+
+    linha.appendChild(voto);
+
+    listaParticipantes.appendChild(linha);
+
+  });
+
+}
+
+
+/* =========================================
+   ATUALIZAR STATUS
 ========================================= */
 
 function atualizarStatus() {
 
-  const quantidade = Object.keys(votos).length;
+  const quantidadeVotos =
+    Object.values(participantes)
+      .filter(p => p.votou === true)
+      .length;
+
+  const quantidadeOnline =
+    Object.keys(participantes).length;
 
   if (revelado) {
 
     statusDiv.textContent =
-      `Votação encerrada. ${quantidade} voto(s).`;
+      `Votação revelada. ${quantidadeOnline} participante(s) online.`;
 
   } else {
 
     statusDiv.textContent =
-      `Votação secreta. ${quantidade} participante(s) votaram.`;
+      `Votação secreta. ${quantidadeVotos} voto(s) de ${quantidadeOnline} participante(s) online.`;
 
   }
 
@@ -633,23 +953,56 @@ botaoLimpar.addEventListener("click", async () => {
 
   try {
 
-    await runTransaction(salaRef, dados => {
+    /*
+      Limpa os votos e volta ao modo secreto.
+      Os participantes continuam conectados.
+    */
 
-      if (dados === null) {
-        dados = {};
+    await update(
+      ref(db),
+      {
+        "votacaoFibonacci/votos": null,
+
+        "votacaoFibonacci/revelado": false
       }
+    );
 
-      dados.votos = {};
+    /*
+      Zera os indicadores públicos de voto.
+    */
 
-      dados.revelado = false;
+    const atualizacoes = {};
 
-      return dados;
+    Object.keys(participantes).forEach(id => {
+
+      atualizacoes[
+        `votacaoFibonacci/presenca/${id}/votou`
+      ] = false;
 
     });
 
+    if (Object.keys(atualizacoes).length > 0) {
+
+      await update(
+        ref(db),
+        atualizacoes
+      );
+
+    }
+
+    votoAtual = null;
+
+    atualizarOpcoes();
+
+    resultadosDiv.style.display =
+      "none";
+
   } catch (erro) {
 
-    console.error("Erro ao limpar:", erro);
+    console.error(
+      "Erro ao limpar:",
+      erro
+    );
 
     statusDiv.textContent =
       "Erro ao reiniciar a votação.";
@@ -660,62 +1013,84 @@ botaoLimpar.addEventListener("click", async () => {
 
 
 /* =========================================
-   CALCULAR MÉDIA E EXIBIR RESULTADOS
+   CALCULAR RESULTADOS
 ========================================= */
 
 function calcularResultados() {
 
-  const lista = Object.values(votos);
+  const lista =
+    Object.values(votos);
 
-  const numericos = lista
-    .map(item => Number(item.voto))
-    .filter(numero => Number.isFinite(numero));
+  const numericos =
+    lista
+      .map(item => Number(item.voto))
+      .filter(numero =>
+        Number.isFinite(numero)
+      );
 
-  const quantidade = numericos.length;
+  const quantidade =
+    numericos.length;
 
-  resultadosDiv.style.display = "block";
+  resultadosDiv.style.display =
+    "block";
 
   if (quantidade === 0) {
 
-    mediaDiv.textContent = "Sem votos numéricos";
+    mediaDiv.textContent =
+      "Sem votos numéricos";
 
     detalhesDiv.textContent =
-      `Total de participantes: ${lista.length}`;
+      `Total de votos: ${lista.length}`;
 
     return;
 
   }
 
-  const soma = numericos.reduce(
-    (total, numero) => total + numero,
-    0
-  );
+  const soma =
+    numericos.reduce(
+      (total, numero) =>
+        total + numero,
+      0
+    );
 
-  const media = soma / quantidade;
+  const media =
+    soma / quantidade;
 
   mediaDiv.textContent =
-    media.toLocaleString("pt-BR", {
-      maximumFractionDigits: 4
-    });
+    media.toLocaleString(
+      "pt-BR",
+      {
+        maximumFractionDigits: 4
+      }
+    );
+
+  /*
+    Distribuição de votos.
+  */
 
   const contagem = {};
 
   lista.forEach(item => {
 
-    const valor = String(item.voto);
+    const valor =
+      String(item.voto);
 
-    contagem[valor] = (contagem[valor] || 0) + 1;
+    contagem[valor] =
+      (contagem[valor] || 0) + 1;
 
   });
 
-  const distribuicao = Object.entries(contagem)
-    .map(([valor, qtd]) => `${valor}: ${qtd}`)
-    .join(" | ");
+  const distribuicao =
+    Object.entries(contagem)
+      .map(([valor, qtd]) =>
+        `${valor}: ${qtd}`
+      )
+      .join(" | ");
 
   detalhesDiv.innerHTML = `
     <p>Votos numéricos: ${quantidade}</p>
     <p>Abstenções (?): ${contagem["?"] || 0}</p>
-    <p>Total de participantes: ${lista.length}</p>
+    <p>Total de votos: ${lista.length}</p>
     <p>Distribuição: ${distribuicao}</p>
   `;
 
