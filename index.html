@@ -358,7 +358,34 @@ function normalizarNomeSala(valor) {
     .replace(/^-|-$/g, "") || "geral";
 }
 
-let salaNome = normalizarNomeSala(decodeURIComponent(location.hash.slice(1)));
+const COOKIE_SALA = "scrumPokerSala";
+const DURACAO_COOKIE_SALA = 365;
+
+function lerCookie(nome) {
+  const prefixo = `${nome}=`;
+  const item = document.cookie.split(";").map(parte => parte.trim())
+    .find(parte => parte.startsWith(prefixo));
+  if (!item) return "";
+  try {
+    return decodeURIComponent(item.slice(prefixo.length));
+  } catch {
+    return "";
+  }
+}
+
+function salvarSalaCookie(nome) {
+  document.cookie = `${COOKIE_SALA}=${encodeURIComponent(nome)}; max-age=${DURACAO_COOKIE_SALA * 24 * 60 * 60}; path=/; SameSite=Lax`;
+}
+
+function obterSalaDaUrlOuCookie() {
+  let anchor = location.hash.slice(1);
+  try { anchor = decodeURIComponent(anchor); } catch { /* mantém o valor original */ }
+  const salaDaUrl = anchor.trim();
+  if (salaDaUrl) return normalizarNomeSala(salaDaUrl);
+  return normalizarNomeSala(lerCookie(COOKIE_SALA) || "geral");
+}
+
+let salaNome = obterSalaDaUrlOuCookie();
 let caminhoSala, salaRef, votosRef, presencaRef, estadoRef, rodadaRef;
 let pararObservacaoEstado = null;
 let pararObservacaoRodada = null;
@@ -371,9 +398,11 @@ function atualizarTituloSala() {
   document.getElementById("nomeSalaLink").textContent = `#${salaNome}`;
 }
 
+// Materializa no endereço a sala resolvida pela URL, cookie ou padrão geral.
 if (location.hash.slice(1) !== salaNome) {
   history.replaceState(null, "", `${location.pathname}${location.search}#${salaNome}`);
 }
+salvarSalaCookie(salaNome);
 
 /* =========================================
    ELEMENTOS HTML
@@ -685,7 +714,8 @@ async function configurarSala(nome) {
   }
   if (geracao !== geracaoSala) return;
 
-  salaNome = nome;
+  salaNome = normalizarNomeSala(nome);
+  salvarSalaCookie(salaNome);
   caminhoSala = `salas/${salaNome}/votacaoFibonacci`;
   salaRef = ref(db, caminhoSala);
   votosRef = ref(db, `${caminhoSala}/votos`);
@@ -717,11 +747,12 @@ async function configurarSala(nome) {
 }
 
 window.addEventListener("hashchange", () => {
-  const nome = normalizarNomeSala(decodeURIComponent(location.hash.slice(1)));
+  const nome = obterSalaDaUrlOuCookie();
   if (location.hash.slice(1) !== nome) {
     history.replaceState(null, "", `${location.pathname}${location.search}#${nome}`);
   }
   if (nome !== salaNome) configurarSala(nome);
+  else salvarSalaCookie(nome);
 });
 
 nomeSalaLink.addEventListener("click", () => {
