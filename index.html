@@ -1,11 +1,10 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/png" href="/win.png">
+<link rel="icon" type="image/png" href="https://scrumpoker-online.github.io/win.png">
 <title>ScrumPoker Online</title>
 
 <style>
@@ -101,7 +100,7 @@ h1 {
 
 .participante {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   padding: 10px 5px;
   border-bottom: 1px solid #374151;
@@ -172,17 +171,17 @@ button.acao {
   margin-top: 0;
 }
 
-#media {
-  font-size: 42px;
+#resultadoArredondado {
+  font-size: 28px;
   font-weight: bold;
   color: #4ade80;
-  margin: 15px 0;
+  margin: 8px 0 14px;
 }
 
-#detalhes {
-  font-size: 15px;
-  line-height: 1.8;
-  overflow-wrap: anywhere;
+#media {
+  font-size: 17px;
+  color: #f9fafb;
+  margin: 8px 0;
 }
 
 .aviso {
@@ -197,7 +196,7 @@ button.acao {
 
 <div class="container">
 
-<h1>ScrumPoker Online</h1>
+<h1 id="titulo">ScrumPoker Online</h1>
 
 <input
   type="text"
@@ -225,29 +224,24 @@ button.acao {
 
 </div>
 
+<!-- Resultados -->
+
+<div class="resultados" id="resultados">
+  <div id="resultadoArredondado">Resultado da Votação: --</div>
+  <div id="media">Média da Votação: --</div>
+</div>
+
 <!-- Ações -->
 
 <div class="botoes">
 
   <button class="acao" id="mostrar">
-    Mostrar resultados
+    Mostrar votação
   </button>
 
   <button class="acao" id="limpar">
     Limpar resultados
   </button>
-
-</div>
-
-<!-- Resultados -->
-
-<div class="resultados" id="resultados">
-
-  <h2>Resultados da votação</h2>
-
-  <div id="media">--</div>
-
-  <div id="detalhes"></div>
 
 </div>
 
@@ -296,7 +290,6 @@ const firebaseConfig = {
   projectId: "scrumpoker-45c00",
   appId: "1:185981243865:web:7eaef045b0533a6c1b49c8",
   messagingSenderId: "185981243865",
-  projectId: "scrumpoker-45c00",
   measurementId: "G-JZESNN0VYV"
 };
   
@@ -316,17 +309,28 @@ const auth = getAuth(app);
    REFERÊNCIAS DO BANCO
 ========================================= */
 
-const salaRef =
-  ref(db, "votacaoFibonacci");
+// O fragmento da URL identifica a sala. Ex.: /#Salesforce -> #salesforce.
+const salaNomeOriginal = decodeURIComponent(location.hash.slice(1)).trim();
+const salaNome = (salaNomeOriginal || "geral")
+  .toLowerCase()
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .replace(/[^a-z0-9_-]/g, "-")
+  .replace(/-+/g, "-");
 
-const votosRef =
-  ref(db, "votacaoFibonacci/votos");
+if (location.hash.slice(1) !== salaNome) {
+  history.replaceState(null, "", `${location.pathname}${location.search}#${salaNome}`);
+}
 
-const presencaRef =
-  ref(db, "votacaoFibonacci/presenca");
+document.getElementById("titulo").textContent =
+  `ScrumPoker Online - #${salaNome}`;
 
-const estadoRef =
-  ref(db, "votacaoFibonacci/revelado");
+const caminhoSala = `salas/${salaNome}/votacaoFibonacci`;
+const salaRef = ref(db, caminhoSala);
+const votosRef = ref(db, `${caminhoSala}/votos`);
+const presencaRef = ref(db, `${caminhoSala}/presenca`);
+const estadoRef = ref(db, `${caminhoSala}/revelado`);
+const rodadaRef = ref(db, `${caminhoSala}/rodada`);
 
 
 /* =========================================
@@ -351,8 +355,8 @@ const resultadosDiv =
 const mediaDiv =
   document.getElementById("media");
 
-const detalhesDiv =
-  document.getElementById("detalhes");
+const resultadoArredondadoDiv =
+  document.getElementById("resultadoArredondado");
 
 const botaoMostrar =
   document.getElementById("mostrar");
@@ -379,12 +383,14 @@ let uid = null;
 let votoAtual = null;
 
 let revelado = false;
+let rodadaAtual = 0;
 
 let votos = {};
 
 let participantes = {};
 
 let conectado = false;
+let pararObservacaoVotos = null;
 
 
 /* =========================================
@@ -474,7 +480,7 @@ fibonacci.forEach(numero => {
 
   botao.addEventListener("click", () => {
 
-    if (!conectado || revelado) return;
+    if (!conectado) return;
 
     registrarVoto(numero);
 
@@ -501,7 +507,7 @@ function atualizarOpcoes() {
     );
 
     botao.disabled =
-      !conectado || revelado;
+      !conectado;
 
   });
 
@@ -514,7 +520,7 @@ function atualizarOpcoes() {
 
 async function registrarVoto(numero) {
 
-  if (!uid || revelado) return;
+  if (!uid) return;
 
   votoAtual = numero;
 
@@ -530,7 +536,7 @@ async function registrarVoto(numero) {
     */
 
     await set(
-      ref(db, `votacaoFibonacci/votos/${uid}`),
+      ref(db, `${caminhoSala}/votos/${uid}`),
       {
         nome: nome,
         voto: numero
@@ -543,10 +549,11 @@ async function registrarVoto(numero) {
     */
 
     await update(
-      ref(db, `votacaoFibonacci/presenca/${uid}`),
+      ref(db, `${caminhoSala}/presenca/${uid}`),
       {
         nome: nome,
-        votou: true
+        votou: true,
+        rodada: rodadaAtual
       }
     );
 
@@ -584,6 +591,8 @@ try {
 
   observarEstado();
 
+  observarRodada();
+
   observarParticipantes();
 
 } catch (erro) {
@@ -608,7 +617,10 @@ async function iniciarPresenca() {
   if (!uid) return;
 
   const minhaPresencaRef =
-    ref(db, `votacaoFibonacci/presenca/${uid}`);
+    ref(db, `${caminhoSala}/presenca/${uid}`);
+
+  const rodadaSnapshot = await get(rodadaRef);
+  rodadaAtual = Number(rodadaSnapshot.val() || 0);
 
   /*
     O Firebase remove a presença automaticamente
@@ -617,28 +629,19 @@ async function iniciarPresenca() {
 
   await onDisconnect(minhaPresencaRef).remove();
 
-  /*
-    Recupera o estado do voto, caso a pessoa
-    recarregue a página.
-  */
-
-  const meuVotoRef =
-    ref(db, `votacaoFibonacci/votos/${uid}`);
-
-  const snapshot =
-    await get(meuVotoRef);
-
+  // Recupera o indicador de voto da rodada atual sem ler
+  // os votos secretos dos demais participantes.
+  const presencaSnapshot = await get(minhaPresencaRef);
+  const presencaAnterior = presencaSnapshot.val() || {};
   const votou =
-    snapshot.exists();
+    presencaAnterior.votou === true &&
+    Number(presencaAnterior.rodada || 0) === rodadaAtual;
 
   await set(minhaPresencaRef, {
-
     nome: campoNome.value,
-
     votou: votou,
-
+    rodada: rodadaAtual,
     online: true
-
   });
 
   /*
@@ -665,26 +668,7 @@ async function iniciarPresenca() {
 
       });
 
-      /*
-        Atualiza também o nome do voto,
-        sem alterar o número escolhido.
-      */
 
-      const votoRef =
-        ref(db, `votacaoFibonacci/votos/${uid}`);
-
-      const votoSnapshot =
-        await get(votoRef);
-
-      if (votoSnapshot.exists()) {
-
-        await update(votoRef, {
-
-          nome: nome
-
-        });
-
-      }
 
     } catch (erro) {
 
@@ -705,36 +689,40 @@ async function iniciarPresenca() {
 ========================================= */
 
 function observarVotos() {
+  if (pararObservacaoVotos) {
+    pararObservacaoVotos();
+    pararObservacaoVotos = null;
+  }
 
-  onValue(votosRef, snapshot => {
+  if (!revelado) {
+    votos = {};
+    atualizarListaParticipantes();
+    return;
+  }
 
+  pararObservacaoVotos = onValue(votosRef, snapshot => {
     votos = snapshot.val() || {};
 
     if (uid && votos[uid]) {
-
       votoAtual = votos[uid].voto;
-
     } else {
-
       votoAtual = null;
-
     }
 
     atualizarOpcoes();
-
     atualizarStatus();
-
     atualizarListaParticipantes();
-
-    if (revelado) {
-
-      calcularResultados();
-
-    }
-
+    calcularResultados();
+  }, erro => {
+    console.error("Erro ao carregar votos:", erro);
+    statusDiv.textContent = "Erro ao carregar os votos.";
   });
-
 }
+
+
+/* =========================================
+   MONITORAR ESTADO DA VOTAÇÃO
+========================================= */
 
 
 /* =========================================
@@ -745,8 +733,12 @@ function observarEstado() {
 
   onValue(estadoRef, snapshot => {
 
-    revelado =
-      snapshot.val() === true;
+    const estavaRevelado = revelado;
+    revelado = snapshot.val() === true;
+
+    if (revelado !== estavaRevelado) {
+      observarVotos();
+    }
 
     atualizarOpcoes();
 
@@ -767,6 +759,24 @@ function observarEstado() {
 
   });
 
+}
+
+
+function observarRodada() {
+  onValue(rodadaRef, snapshot => {
+    const novaRodada = Number(snapshot.val() || 0);
+
+    if (novaRodada !== rodadaAtual) {
+      rodadaAtual = novaRodada;
+      votoAtual = null;
+      votos = {};
+      atualizarOpcoes();
+      resultadosDiv.style.display = "none";
+    }
+
+    atualizarListaParticipantes();
+    atualizarStatus();
+  });
 }
 
 
@@ -801,7 +811,7 @@ function atualizarListaParticipantes() {
   const lista = Object.entries(participantes)
     .map(([id, dados]) => {
 
-      let exibicaoVoto = "-";
+      let exibicaoVoto = "⬜";
 
       if (revelado) {
 
@@ -809,12 +819,14 @@ function atualizarListaParticipantes() {
           votos[id]?.voto;
 
         exibicaoVoto =
-          voto !== undefined ? voto : "-";
+          voto !== undefined ? voto : "⬜";
 
       } else {
 
         exibicaoVoto =
-          dados.votou === true ? "*" : "-";
+          dados.votou === true && Number(dados.rodada || 0) === rodadaAtual
+            ? "✅"
+            : "⬜";
 
       }
 
@@ -857,20 +869,9 @@ function atualizarListaParticipantes() {
       "participante-nome";
 
     nome.textContent =
-      participante.nome;
-
-    const voto =
-      document.createElement("span");
-
-    voto.className =
-      "participante-voto";
-
-    voto.textContent =
-      participante.voto;
+      `${participante.voto} ${participante.nome}`;
 
     linha.appendChild(nome);
-
-    linha.appendChild(voto);
 
     listaParticipantes.appendChild(linha);
 
@@ -887,7 +888,7 @@ function atualizarStatus() {
 
   const quantidadeVotos =
     Object.values(participantes)
-      .filter(p => p.votou === true)
+      .filter(p => p.votou === true && Number(p.rodada || 0) === rodadaAtual)
       .length;
 
   const quantidadeOnline =
@@ -947,61 +948,25 @@ botaoLimpar.addEventListener("click", async () => {
   if (!confirmar) return;
 
   try {
+    // Nova rodada invalida os indicadores antigos sem alterar
+    // os registros de presença dos demais participantes.
+    const proximaRodada = rodadaAtual + 1;
 
-    /*
-      Limpa os votos e volta ao modo secreto.
-      Os participantes continuam conectados.
-    */
-
-    await update(
-      ref(db),
-      {
-        "votacaoFibonacci/votos": null,
-
-        "votacaoFibonacci/revelado": false
-      }
-    );
-
-    /*
-      Zera os indicadores públicos de voto.
-    */
-
-    const atualizacoes = {};
-
-    Object.keys(participantes).forEach(id => {
-
-      atualizacoes[
-        `votacaoFibonacci/presenca/${id}/votou`
-      ] = false;
-
-    });
-
-    if (Object.keys(atualizacoes).length > 0) {
-
-      await update(
-        ref(db),
-        atualizacoes
-      );
-
-    }
+    await Promise.all([
+      set(votosRef, null),
+      set(estadoRef, false),
+      set(rodadaRef, proximaRodada)
+    ]);
 
     votoAtual = null;
-
+    votos = {};
+    revelado = false;
     atualizarOpcoes();
-
-    resultadosDiv.style.display =
-      "none";
+    resultadosDiv.style.display = "none";
 
   } catch (erro) {
-
-    console.error(
-      "Erro ao limpar:",
-      erro
-    );
-
-    statusDiv.textContent =
-      "Erro ao reiniciar a votação.";
-
+    console.error("Erro ao limpar:", erro);
+    statusDiv.textContent = "Erro ao reiniciar a votação.";
   }
 
 });
@@ -1011,84 +976,51 @@ botaoLimpar.addEventListener("click", async () => {
    CALCULAR RESULTADOS
 ========================================= */
 
-function calcularResultados() {
+function arredondarParaFibonacci(media) {
+  const sequencia = [1, 2, 3, 5, 8, 13, 21, 34, 55];
 
-  const lista =
-    Object.values(votos);
+  if (media === 5) return 5;
 
-  const numericos =
-    lista
-      .map(item => Number(item.voto))
-      .filter(numero =>
-        Number.isFinite(numero)
-      );
-
-  const quantidade =
-    numericos.length;
-
-  resultadosDiv.style.display =
-    "block";
-
-  if (quantidade === 0) {
-
-    mediaDiv.textContent =
-      "Sem votos numéricos";
-
-    detalhesDiv.textContent =
-      `Total de votos: ${lista.length}`;
-
-    return;
-
+  if (media > 5) {
+    return sequencia.find(numero => numero >= media) ?? 55;
   }
 
-  const soma =
-    numericos.reduce(
-      (total, numero) =>
-        total + numero,
-      0
-    );
+  // Abaixo de 5: menor distância; em empate, escolhe o maior.
+  return sequencia.reduce((melhor, atual) => {
+    const distanciaAtual = Math.abs(atual - media);
+    const distanciaMelhor = Math.abs(melhor - media);
 
-  const media =
-    soma / quantidade;
+    if (distanciaAtual < distanciaMelhor) return atual;
+    if (distanciaAtual === distanciaMelhor && atual > melhor) return atual;
+    return melhor;
+  });
+}
+
+function calcularResultados() {
+  const numericos = Object.values(votos)
+    .map(item => Number(item.voto))
+    .filter(numero => Number.isFinite(numero));
+
+  resultadosDiv.style.display = "block";
+
+  if (numericos.length === 0) {
+    resultadoArredondadoDiv.textContent =
+      "Resultado da Votação: sem votos numéricos";
+    mediaDiv.textContent = "Média da Votação: --";
+    return;
+  }
+
+  const soma = numericos.reduce((total, numero) => total + numero, 0);
+  const media = soma / numericos.length;
+  const resultado = arredondarParaFibonacci(media);
+
+  resultadoArredondadoDiv.textContent =
+    `Resultado da Votação: ${resultado}`;
 
   mediaDiv.textContent =
-    media.toLocaleString(
-      "pt-BR",
-      {
-        maximumFractionDigits: 4
-      }
-    );
-
-  /*
-    Distribuição de votos.
-  */
-
-  const contagem = {};
-
-  lista.forEach(item => {
-
-    const valor =
-      String(item.voto);
-
-    contagem[valor] =
-      (contagem[valor] || 0) + 1;
-
-  });
-
-  const distribuicao =
-    Object.entries(contagem)
-      .map(([valor, qtd]) =>
-        `${valor}: ${qtd}`
-      )
-      .join(" | ");
-
-  detalhesDiv.innerHTML = `
-    <p>Votos numéricos: ${quantidade}</p>
-    <p>Abstenções (?): ${contagem["?"] || 0}</p>
-    <p>Total de votos: ${lista.length}</p>
-    <p>Distribuição: ${distribuicao}</p>
-  `;
-
+    `Média da Votação: ${media.toLocaleString("pt-BR", {
+      maximumFractionDigits: 4
+    })}`;
 }
 
 </script>
