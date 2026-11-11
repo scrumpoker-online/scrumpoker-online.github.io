@@ -1112,20 +1112,11 @@ botaoLimpar.addEventListener("click", async () => {
 function arredondarParaFibonacci(media) {
   const sequencia = [1, 2, 3, 5, 8, 13, 21, 34, 55];
 
-  if (media === 5) return 5;
-
-  if (media > 5) {
-    return sequencia.find(numero => numero >= media) ?? 55;
-  }
-
-  // Abaixo de 5: menor distância; em empate, escolhe o maior.
+  // Sempre escolhe o Fibonacci mais próximo; em empate, escolhe o maior.
   return sequencia.reduce((melhor, atual) => {
     const distanciaAtual = Math.abs(atual - media);
     const distanciaMelhor = Math.abs(melhor - media);
-
-    if (distanciaAtual < distanciaMelhor) return atual;
-    if (distanciaAtual === distanciaMelhor && atual > melhor) return atual;
-    return melhor;
+    return distanciaAtual <= distanciaMelhor ? atual : melhor;
   });
 }
 
