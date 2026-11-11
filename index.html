@@ -31,6 +31,38 @@ h1 {
   margin-bottom: 25px;
 }
 
+#nomeSalaLink {
+  color: #93c5fd;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 4px;
+}
+
+#modalSala {
+  width: min(90%, 380px);
+  border: 1px solid #4b5563;
+  border-radius: 12px;
+  padding: 22px;
+  background: #1f2937;
+  color: #f9fafb;
+}
+
+#modalSala::backdrop { background: rgb(0 0 0 / 70%); }
+#modalSala h2 { margin-top: 0; font-size: 20px; }
+#novoNomeSala {
+  width: 100%; padding: 12px; font-size: 16px;
+  border: 1px solid #4b5563; border-radius: 8px;
+  background: #111827; color: white;
+}
+.modal-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.modal-acoes button {
+  padding: 10px 16px; border: 0; border-radius: 7px;
+  font-size: 15px; font-weight: bold; cursor: pointer;
+}
+#confirmarSala { background: #16a34a; color: white; }
+#cancelarSala { background: #4b5563; color: white; }
+
 #nome {
   width: 100%;
   padding: 12px;
@@ -196,7 +228,18 @@ button.acao {
 
 <div class="container">
 
-<h1 id="titulo">ScrumPoker Online</h1>
+<h1 id="titulo">ScrumPoker Online - <span id="nomeSalaLink" title="Alterar sala">#geral</span></h1>
+
+<dialog id="modalSala">
+  <form id="formSala">
+    <h2>Entrar em outra sala</h2>
+    <input id="novoNomeSala" type="text" maxlength="60" placeholder="Nome da sala" autocomplete="off" required>
+    <div class="modal-acoes">
+      <button type="button" id="cancelarSala">Cancelar</button>
+      <button type="submit" id="confirmarSala">OK</button>
+    </div>
+  </form>
+</dialog>
 
 <input
   type="text"
@@ -306,32 +349,31 @@ const auth = getAuth(app);
 
 
 /* =========================================
-   REFERÊNCIAS DO BANCO
+   SALA E REFERÊNCIAS DINÂMICAS DO BANCO
 ========================================= */
+function normalizarNomeSala(valor) {
+  return (valor || "geral").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9_-]/g, "-").replace(/-+/g, "-")
+    .replace(/^-|-$/g, "") || "geral";
+}
 
-// O fragmento da URL identifica a sala. Ex.: /#Salesforce -> #salesforce.
-const salaNomeOriginal = decodeURIComponent(location.hash.slice(1)).trim();
-const salaNome = (salaNomeOriginal || "geral")
-  .toLowerCase()
-  .normalize("NFD")
-  .replace(/[\u0300-\u036f]/g, "")
-  .replace(/[^a-z0-9_-]/g, "-")
-  .replace(/-+/g, "-");
+let salaNome = normalizarNomeSala(decodeURIComponent(location.hash.slice(1)));
+let caminhoSala, salaRef, votosRef, presencaRef, estadoRef, rodadaRef;
+let pararObservacaoEstado = null;
+let pararObservacaoRodada = null;
+let pararObservacaoParticipantes = null;
+let pararObservacaoVotos = null;
+let geracaoSala = 0;
+let minhaPresencaRefAtual = null;
+
+function atualizarTituloSala() {
+  document.getElementById("nomeSalaLink").textContent = `#${salaNome}`;
+}
 
 if (location.hash.slice(1) !== salaNome) {
   history.replaceState(null, "", `${location.pathname}${location.search}#${salaNome}`);
 }
-
-document.getElementById("titulo").textContent =
-  `ScrumPoker Online - #${salaNome}`;
-
-const caminhoSala = `salas/${salaNome}/votacaoFibonacci`;
-const salaRef = ref(db, caminhoSala);
-const votosRef = ref(db, `${caminhoSala}/votos`);
-const presencaRef = ref(db, `${caminhoSala}/presenca`);
-const estadoRef = ref(db, `${caminhoSala}/revelado`);
-const rodadaRef = ref(db, `${caminhoSala}/rodada`);
-
 
 /* =========================================
    ELEMENTOS HTML
@@ -364,6 +406,11 @@ const botaoMostrar =
 const botaoLimpar =
   document.getElementById("limpar");
 
+const nomeSalaLink = document.getElementById("nomeSalaLink");
+const modalSala = document.getElementById("modalSala");
+const formSala = document.getElementById("formSala");
+const novoNomeSala = document.getElementById("novoNomeSala");
+
 
 /* =========================================
    SEQUÊNCIA DE FIBONACCI
@@ -390,7 +437,6 @@ let votos = {};
 let participantes = {};
 
 let conectado = false;
-let pararObservacaoVotos = null;
 
 
 /* =========================================
@@ -585,15 +631,7 @@ try {
   statusDiv.textContent =
     "Conectado. Escolha seu número.";
 
-  iniciarPresenca();
-
-  observarVotos();
-
-  observarEstado();
-
-  observarRodada();
-
-  observarParticipantes();
+  await configurarSala(salaNome);
 
 } catch (erro) {
 
@@ -608,18 +646,114 @@ try {
 }
 
 
+// Atualiza o nome no navegador e na presença da sala ativa.
+campoNome.addEventListener("input", async () => {
+  const nome = campoNome.value.trim() || "Anônimo";
+  localStorage.setItem("nomeFibonacci", nome);
+  if (!uid || !minhaPresencaRefAtual) return;
+  try {
+    await update(minhaPresencaRefAtual, { nome });
+  } catch (erro) {
+    console.error("Erro ao atualizar nome:", erro);
+  }
+});
+
+/* =========================================
+   TROCA DE SALA SEM RECARREGAR A PÁGINA
+========================================= */
+async function configurarSala(nome) {
+  const geracao = ++geracaoSala;
+  minhaPresencaRefAtual = null;
+  const salaAnteriorPresenca = presencaRef && uid
+    ? ref(db, `${caminhoSala}/presenca/${uid}`) : null;
+
+  // Encerra os listeners da sala anterior.
+  [pararObservacaoVotos, pararObservacaoEstado,
+   pararObservacaoRodada, pararObservacaoParticipantes].forEach(parar => {
+    if (parar) parar();
+  });
+  pararObservacaoVotos = pararObservacaoEstado = null;
+  pararObservacaoRodada = pararObservacaoParticipantes = null;
+
+  if (salaAnteriorPresenca) {
+    try {
+      await onDisconnect(salaAnteriorPresenca).cancel();
+      await set(salaAnteriorPresenca, null);
+    } catch (erro) {
+      console.warn("Não foi possível encerrar a presença na sala anterior:", erro);
+    }
+  }
+  if (geracao !== geracaoSala) return;
+
+  salaNome = nome;
+  caminhoSala = `salas/${salaNome}/votacaoFibonacci`;
+  salaRef = ref(db, caminhoSala);
+  votosRef = ref(db, `${caminhoSala}/votos`);
+  presencaRef = ref(db, `${caminhoSala}/presenca`);
+  estadoRef = ref(db, `${caminhoSala}/revelado`);
+  rodadaRef = ref(db, `${caminhoSala}/rodada`);
+  atualizarTituloSala();
+
+  votoAtual = null;
+  revelado = false;
+  rodadaAtual = 0;
+  votos = {};
+  participantes = {};
+  resultadosDiv.style.display = "none";
+  listaParticipantes.textContent = "Conectando à sala...";
+  atualizarOpcoes();
+
+  if (!uid) return;
+  const minhaPresencaRef = ref(db, `${caminhoSala}/presenca/${uid}`);
+  minhaPresencaRefAtual = minhaPresencaRef;
+  await iniciarPresenca(geracao, minhaPresencaRef, rodadaRef);
+  if (geracao !== geracaoSala) return;
+
+  observarVotos();
+  observarEstado();
+  observarRodada();
+  observarParticipantes();
+  atualizarOpcoes();
+}
+
+window.addEventListener("hashchange", () => {
+  const nome = normalizarNomeSala(decodeURIComponent(location.hash.slice(1)));
+  if (location.hash.slice(1) !== nome) {
+    history.replaceState(null, "", `${location.pathname}${location.search}#${nome}`);
+  }
+  if (nome !== salaNome) configurarSala(nome);
+});
+
+nomeSalaLink.addEventListener("click", () => {
+  novoNomeSala.value = salaNome;
+  modalSala.showModal();
+  novoNomeSala.focus();
+  novoNomeSala.select();
+});
+
+document.getElementById("cancelarSala").addEventListener("click", () => {
+  modalSala.close();
+});
+
+formSala.addEventListener("submit", event => {
+  event.preventDefault();
+  const novaSala = normalizarNomeSala(novoNomeSala.value);
+  modalSala.close();
+  if (novaSala !== salaNome) location.hash = novaSala;
+});
+
 /* =========================================
    PRESENÇA ONLINE
 ========================================= */
 
-async function iniciarPresenca() {
+async function iniciarPresenca(geracao, referenciaPresenca, referenciaRodada) {
 
   if (!uid) return;
 
-  const minhaPresencaRef =
-    ref(db, `${caminhoSala}/presenca/${uid}`);
+  const minhaPresencaRef = referenciaPresenca;
 
-  const rodadaSnapshot = await get(rodadaRef);
+  const rodadaSnapshot = await get(referenciaRodada);
+  if (geracao !== geracaoSala) return;
   rodadaAtual = Number(rodadaSnapshot.val() || 0);
 
   /*
@@ -628,10 +762,12 @@ async function iniciarPresenca() {
   */
 
   await onDisconnect(minhaPresencaRef).remove();
+  if (geracao !== geracaoSala) return;
 
   // Recupera o indicador de voto da rodada atual sem ler
   // os votos secretos dos demais participantes.
   const presencaSnapshot = await get(minhaPresencaRef);
+  if (geracao !== geracaoSala) return;
   const presencaAnterior = presencaSnapshot.val() || {};
   const votou =
     presencaAnterior.votou === true &&
@@ -643,45 +779,11 @@ async function iniciarPresenca() {
     rodada: rodadaAtual,
     online: true
   });
+  if (geracao !== geracaoSala) return;
 
-  /*
-    Alteração do nome em tempo real.
-  */
-
-  campoNome.addEventListener("input", async () => {
-
-    const nome =
-      campoNome.value.trim() || "Anônimo";
-
-    localStorage.setItem(
-      "nomeFibonacci",
-      nome
-    );
-
-    if (!uid) return;
-
-    try {
-
-      await update(minhaPresencaRef, {
-
-        nome: nome
-
-      });
-
-
-
-    } catch (erro) {
-
-      console.error(
-        "Erro ao atualizar nome:",
-        erro
-      );
-
-    }
-
-  });
 
 }
+
 
 
 /* =========================================
@@ -731,7 +833,7 @@ function observarVotos() {
 
 function observarEstado() {
 
-  onValue(estadoRef, snapshot => {
+  pararObservacaoEstado = onValue(estadoRef, snapshot => {
 
     const estavaRevelado = revelado;
     revelado = snapshot.val() === true;
@@ -763,7 +865,7 @@ function observarEstado() {
 
 
 function observarRodada() {
-  onValue(rodadaRef, snapshot => {
+  pararObservacaoRodada = onValue(rodadaRef, snapshot => {
     const novaRodada = Number(snapshot.val() || 0);
 
     if (novaRodada !== rodadaAtual) {
@@ -786,7 +888,7 @@ function observarRodada() {
 
 function observarParticipantes() {
 
-  onValue(presencaRef, snapshot => {
+  pararObservacaoParticipantes = onValue(presencaRef, snapshot => {
 
     participantes =
       snapshot.val() || {};
