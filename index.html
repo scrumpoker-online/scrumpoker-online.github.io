@@ -251,21 +251,9 @@ button.acao {
 
 <div class="opcoes" id="opcoes"></div>
 
-<div class="status" id="status">
+<!--<div class="status" id="status">
   Conectando...
-</div>
-
-<!-- Participantes online -->
-
-<div class="participantes">
-
-  <h2>Participantes online</h2>
-
-  <div id="listaParticipantes">
-    Aguardando conexão...
-  </div>
-
-</div>
+</div>-->
 
 <!-- Resultados -->
 
@@ -274,23 +262,18 @@ button.acao {
   <div id="media">Média da Votação: --</div>
 </div>
 
-<!-- Ações -->
+<!-- Participantes online -->
 
-<div class="botoes">
+<div class="participantes">
 
-  <button class="acao" id="mostrar">
-    Mostrar votação
-  </button>
+  <h2 id="status">Conectando...</h2>
 
-  <button class="acao" id="limpar">
-    Limpar resultados
-  </button>
+  <div id="listaParticipantes">
+    Aguardando conexão...
+  </div>
 
 </div>
 
-<div class="aviso">
-  Os votos permanecem secretos até a revelação.
-</div>
 
 </div>
 
@@ -429,11 +412,6 @@ const mediaDiv =
 const resultadoArredondadoDiv =
   document.getElementById("resultadoArredondado");
 
-const botaoMostrar =
-  document.getElementById("mostrar");
-
-const botaoLimpar =
-  document.getElementById("limpar");
 
 const nomeSalaLink = document.getElementById("nomeSalaLink");
 const modalSala = document.getElementById("modalSala");
@@ -565,6 +543,18 @@ fibonacci.forEach(numero => {
 
 });
 
+  const botao1 = document.createElement("button");
+    botao1.className = "acao";
+    botao1.id = "mostrar";
+    botao1.textContent = "Mostrar votação";
+  opcoesDiv.appendChild(botao1);
+
+  const botao2 = document.createElement("button");
+    botao2.className = "acao";
+    botao2.id = "limpar";
+    botao2.textContent = "Limpar resultados";
+  opcoesDiv.appendChild(botao2);
+
 
 /* =========================================
    ATUALIZAR BOTÕES
@@ -658,7 +648,7 @@ try {
   conectado = true;
 
   statusDiv.textContent =
-    "Conectado. Escolha seu número.";
+    "Conectado.";
 
   await configurarSala(salaNome);
 
@@ -857,11 +847,6 @@ function observarVotos() {
    MONITORAR ESTADO DA VOTAÇÃO
 ========================================= */
 
-
-/* =========================================
-   MONITORAR ESTADO DA VOTAÇÃO
-========================================= */
-
 function observarEstado() {
 
   pararObservacaoEstado = onValue(estadoRef, snapshot => {
@@ -1027,7 +1012,11 @@ function atualizarStatus() {
   const quantidadeOnline =
     Object.keys(participantes).length;
 
-  if (revelado) {
+
+  statusDiv.textContent =
+      `${quantidadeOnline} participante(s) online.`;
+
+  /*if (revelado) {
 
     statusDiv.textContent =
       `Votação revelada. ${quantidadeOnline} participante(s) online.`;
@@ -1037,7 +1026,7 @@ function atualizarStatus() {
     statusDiv.textContent =
       `Votação secreta. ${quantidadeVotos} voto(s) de ${quantidadeOnline} participante(s) online.`;
 
-  }
+  }*/
 
 }
 
@@ -1045,6 +1034,9 @@ function atualizarStatus() {
 /* =========================================
    MOSTRAR RESULTADOS
 ========================================= */
+
+const botaoMostrar =
+  document.getElementById("mostrar");
 
 botaoMostrar.addEventListener("click", async () => {
 
@@ -1069,6 +1061,9 @@ botaoMostrar.addEventListener("click", async () => {
 /* =========================================
    LIMPAR RESULTADOS E REINICIAR
 ========================================= */
+
+const botaoLimpar =
+  document.getElementById("limpar");
 
 botaoLimpar.addEventListener("click", async () => {
 
@@ -1130,7 +1125,7 @@ function calcularResultados() {
   if (numericos.length === 0) {
     resultadoArredondadoDiv.textContent =
       "Resultado da Votação: sem votos numéricos";
-    mediaDiv.textContent = "Média da Votação: --";
+    mediaDiv.textContent = "Média da Votação: ??";
     return;
   }
 
@@ -1143,7 +1138,7 @@ function calcularResultados() {
 
   mediaDiv.textContent =
     `Média da Votação: ${media.toLocaleString("pt-BR", {
-      maximumFractionDigits: 4
+      maximumFractionDigits: 1
     })}`;
 }
 
